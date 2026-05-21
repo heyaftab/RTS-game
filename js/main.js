@@ -984,7 +984,8 @@ function updateCombat(e, dt) {
           e.target.state = 'attack';
         }
         if (e.target.hp <= 0) {
-          onDeath(e.target);
+          e.target.hp = 0;
+          e.target = null;
         }
       }
     } else if (e.kind === 'unit' && (e.attackMove || e.state === 'attack')) {
@@ -1017,7 +1018,7 @@ function fireTeslaShock(attacker, target, damage) {
         e.hp -= chainDamage;
         spawnTeslaArc(toX, toY, cx(e), cy(e), false);
         spawnEffect(cx(e), cy(e), 'teslaHit');
-        if (e.hp <= 0) onDeath(e);
+        if (e.hp <= 0) e.hp = 0;
       });
   }
 }
@@ -2778,15 +2779,10 @@ function gameLoop(ts) {
       if (e.kind === 'unit') updateMovement(e, dt);
     }
 
-    // Remove dead — any non-removed dead entities need onDeath called
-    for (let i = 0, len = entities.length; i < len; i++) {
-      if (entities[i].hp <= 0) onDeath(entities[i]);
-    }
-    const alive = [];
-    for (let i = 0, len = entities.length; i < len; i++) {
-      if (entities[i].hp > 0) alive.push(entities[i]);
-    }
-    entities = alive;
+    // Remove dead entities safely after the update loop.
+    const deadEntities = entities.filter(e => e.hp <= 0);
+    deadEntities.forEach(onDeath);
+    entities = entities.filter(e => e.hp > 0);
   }
 
   const updateMinimapNow = minimapRenderTimer >= 0.12 || paused || gameOver;

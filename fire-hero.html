@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fire Hero</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #080402; overflow: hidden; font-family: 'Georgia', serif; }
+
+#hero {
+  position: relative;
+  width: 100vw; height: 100vh;
+  display: flex; align-items: center; justify-content: center;
+}
+
+#fire-canvas {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  display: block;
+}
+
+.content {
+  position: relative; z-index: 2;
+  text-align: center;
+  pointer-events: none;
+}
+
+.content h1 {
+  font-size: clamp(2.5rem, 10vw, 7rem);
+  color: #fff7e0;
+  text-shadow:
+    0 0 40px rgba(255, 100, 0, 0.6),
+    0 0 80px rgba(255, 50, 0, 0.3),
+    0 0 160px rgba(200, 20, 0, 0.15);
+  letter-spacing: 0.15em;
+  margin-bottom: 0.3em;
+  font-weight: 700;
+}
+
+.content p {
+  font-size: clamp(0.9rem, 2.5vw, 1.4rem);
+  color: rgba(255, 200, 120, 0.6);
+  letter-spacing: 0.4em;
+  text-transform: uppercase;
+}
+
+/* Heat shimmer overlay */
+#shimmer-canvas {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  display: block;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  opacity: 0.3;
+}
+
+/* Responsive flame area marker (invisible) */
+.flame-zone {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 55vh;
+  pointer-events: none;
+}
+</style>
+</head>
+<body>
+
+<div id="hero">
+  <canvas id="fire-canvas"></canvas>
+  <canvas id="shimmer-canvas"></canvas>
+
+  <div class="flame-zone" id="flame-zone"></div>
+
+  <div class="content">
+    <h1>IGNITE</h1>
+    <p>Where ideas burn bright</p>
+  </div>
+</div>
+
+<script>
+(function() {
+  const c = document.getElementById('fire-canvas');
+  const ctx = c.getContext('2d');
+
+  const sc = document.getElementById('shimmer-canvas');
+  const sctx = sc.getContext('2d');
+
+  let W, H;
+
+  function resize() {
+    const rect = document.getElementById('hero').getBoundingClientRect();
+    W = c.width = sc.width = rect.width;
+    H = c.height = sc.height = rect.height;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // ── Noise ──
+  function hash(x, y) {
+    let h = (x * 374761393 + y * 668265263) | 0;
+    h = ((h ^ (h >> 13)) * 1274126177) | 0;
+    return ((h ^ (h >> 16)) & 0x7fffffff) / 0x7fffffff;
+  }
+  function noise(x, y) {
+    const ix = Math.floor(x), iy = Math.floor(y);
+    const fx = x - ix, fy = y - iy;
+    const sx = fx * fx * (3 - 2 * fx);
+    const sy = fy * fy * (3 - 2 * fy);
+    return hash(ix, iy) + (hash(ix + 1, iy) - hash(ix, iy)) * sx
+         + (hash(ix, iy + 1) - hash(ix, iy)) * sy
+         + (hash(ix + 1, iy + 1) - hash(ix + 1, iy) - hash(ix, iy + 1) + hash(ix, iy)) * sx * sy;
+  }
+
+  // ── Particles ──
+  const MAX_PARTICLES = 400;
+  const particles = [];
+
+  for (let i = 0; i < MAX_PARTICLES; i++) {
+    particles.push(createParticle(true));
+  }
+
+  function createParticle(randomY) {
+    return {
+      x: Math.random(),
+      y: randomY ? Math.random() : 1,
+      vx: 0,
+      vy: -(1.2 + Math.random() * 3.0),
+      size: 2 + Math.random() * 6,
+      life: 0.6 + Math.random() * 1.8,
+      t: randomY ? Math.random() * 2 : 0,
+      drift: (Math.random() - 0.5) * 0.5,
+      hue: 30 + Math.random() * 30,
+    };
+  }
+
+  // ── Embers (sparks that shoot higher) ──
+  const embers = [];
+  for (let i = 0; i < 60; i++) {
+    embers.push({
+      x: Math.random(),
+      y: 1,
+      vx: (Math.random() - 0.5) * 2,
+      vy: -(3 + Math.random() * 5),
+      size: 1 + Math.random() * 2,
+      life: 0.3 + Math.random() * 0.8,
+      t: Math.random() * 0.8,
+    });
+  }
+
+  // ── Smoke particles ──
+  const smoke = [];
+  for (let i = 0; i < 80; i++) {
+    smoke.push({
+      x: Math.random(),
+      y: 0.7 + Math.random() * 0.3,
+      vx: (Math.random() - 0.5) * 0.15,
+      vy: -(0.15 + Math.random() * 0.3),
+      size: 20 + Math.random() * 40,
+      life: 4 + Math.random() * 6,
+      t: Math.random() * 6,
+    });
+  }
+
+  // ── Draw ──
+  function draw(ts) {
+    const t = ts * 0.001;
+    ctx.clearRect(0, 0, W, H);
+
+    // ── Background glow ──
+    const flicker = 0.85 + noise(t * 3, 0) * 0.15;
+    const bgGrad = ctx.createRadialGradient(W/2, H, 0, W/2, H, W * 0.8);
+    bgGrad.addColorStop(0, `rgba(220,80,10,${0.15 * flicker})`);
+    bgGrad.addColorStop(0.3, `rgba(140,30,0,${0.08 * flicker})`);
+    bgGrad.addColorStop(0.6, `rgba(60,8,0,${0.03})`);
+    bgGrad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, W, H);
+
+    // ── Flame sheets ──
+    for (let layer = 0; layer < 4; layer++) {
+      const alpha = [0.14, 0.10, 0.07, 0.04][layer];
+      const r = [255, 220, 160, 80][layer];
+      const g = [180, 80, 25, 5][layer];
+      const b = [30, 5, 0, 0][layer];
+      const count = [5, 7, 9, 12][layer];
+      const baseH = [0.35, 0.30, 0.25, 0.18][layer];
+
+      ctx.beginPath();
+      for (let i = 0; i < count; i++) {
+        const xp = (i + 0.5) / count;
+        const n1 = noise(t * (2 + layer) + i * 3.7, layer * 5 + t * 0.3);
+        const n2 = noise(t * (2.5 + layer) + i * 4.3, layer * 7 + t * 0.5);
+        const n3 = noise(t * (3 + layer) + i * 5.1, layer * 9 + t * 0.4);
+        const cx = xp * W + (n1 - 0.5) * W * 0.12;
+        const fh = (baseH + n2 * 0.12) * H;
+        const fw = (W / count) * (0.5 + layer * 0.08) * (0.5 + n3 * 0.5);
+        const tipX = (n3 - 0.5) * fw * 0.5;
+        const tipOff = fh * (0.2 + n1 * 0.15);
+
+        if (i === 0) ctx.moveTo(cx - fw, H);
+        else ctx.lineTo(cx - fw, H);
+
+        const tipY = H - fh;
+        ctx.bezierCurveTo(
+          cx - fw * 0.2, H,
+          cx - fw * 0.1, tipY + fh * 0.4,
+          cx + tipX * 0.3, tipY + tipOff * 0.3
+        );
+        ctx.bezierCurveTo(
+          cx + tipX * 0.7, tipY - tipOff * 0.3,
+          cx + tipX, tipY - tipOff * 0.6,
+          cx + tipX, tipY - tipOff
+        );
+        ctx.bezierCurveTo(
+          cx + tipX + fw * 0.1, tipY + tipOff * 0.1,
+          cx + fw * 0.3, tipY + fh * 0.2,
+          cx + fw, H
+        );
+      }
+      ctx.closePath();
+      const grad = ctx.createLinearGradient(0, H * 0.2, 0, H);
+      grad.addColorStop(0, `rgba(${r},${g},${b},0)`);
+      grad.addColorStop(0.2, `rgba(${r},${Math.min(255,g+40)},${b},${alpha*0.3})`);
+      grad.addColorStop(0.5, `rgba(${r},${g},${b},${alpha*0.7})`);
+      grad.addColorStop(0.8, `rgba(${Math.floor(r*0.7)},${Math.floor(g*0.4)},0,${alpha*0.85})`);
+      grad.addColorStop(1, `rgba(${Math.floor(r*0.3)},${Math.floor(g*0.15)},0,${alpha})`);
+      ctx.fillStyle = grad;
+      ctx.fill();
+    }
+
+    // ── Blue base (hot) ──
+    for (let i = 0; i < 4; i++) {
+      const xp = 0.12 + noise(t * 2.5 + i * 7, 0) * 0.76;
+      const by = H - (15 + noise(t * 3 + i * 5, 0) * 20);
+      const br = 12 + noise(t * 2 + i * 11, 0) * 18;
+      const ba = 0.025 + noise(t * 3.5 + i * 3, 0) * 0.025;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const g = ctx.createRadialGradient(xp * W, by, 0, xp * W, by, br);
+      g.addColorStop(0, `rgba(100,160,255,${ba})`);
+      g.addColorStop(0.4, `rgba(40,80,220,${ba * 0.3})`);
+      g.addColorStop(1, 'rgba(0,0,100,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(xp * W, by, br, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // ── Core bright flashes ──
+    for (let i = 0; i < 5; i++) {
+      const xp = 0.15 + noise(t * 2 + i * 13, t * 0.5) * 0.7;
+      const cy = H - (0.08 + noise(t * 3 + i * 11, 0) * 0.06) * H;
+      const cr = 12 + noise(t * 3.5 + i * 17, 0) * 25;
+      const ca = 0.06 + noise(t * 4 + i * 19, 0) * 0.05;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const g = ctx.createRadialGradient(xp * W, cy, 0, xp * W, cy, cr);
+      g.addColorStop(0, `rgba(255,240,150,${ca})`);
+      g.addColorStop(0.4, `rgba(255,160,40,${ca * 0.4})`);
+      g.addColorStop(1, 'rgba(200,40,0,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(xp * W, cy, cr, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // ── Fire particles ──
+    const dt = 0.016;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (const p of particles) {
+      p.t += dt;
+      const lifePct = p.t / p.life;
+      if (lifePct > 1) { Object.assign(p, createParticle(false)); continue; }
+      p.x += (noise(p.y * W * 0.003 + t, p.x * W * 0.003 + t * 0.5) - 0.5) * 0.003 + Math.sin(p.y * 20 + t) * 0.0005;
+      p.y += p.vy * dt;
+      p.vy -= 0.35 * dt;
+      if (p.y > 1 || p.y < -0.05) { Object.assign(p, createParticle(false)); continue; }
+      const alpha = Math.min(1, lifePct * 5) * (1 - Math.max(0, (lifePct - 0.7) / 0.3));
+      const sz = p.size * (1 + lifePct * 1.2);
+      const hval = p.hue * (1 - lifePct * 0.5);
+      const brightness = 60 + 30 - lifePct * 50;
+      const px = p.x * W, py = p.y * H;
+      ctx.fillStyle = `hsla(${hval}, 100%, ${brightness}%, ${alpha * 0.9})`;
+      ctx.beginPath();
+      ctx.arc(px, py, sz, 0, Math.PI * 2);
+      ctx.fill();
+      // Glow halo
+      const gg = ctx.createRadialGradient(px, py, 0, px, py, sz * 4);
+      gg.addColorStop(0, `hsla(${hval}, 100%, ${brightness + 15}%, ${alpha * 0.08})`);
+      gg.addColorStop(1, 'hsla(0,0%,0%,0)');
+      ctx.fillStyle = gg;
+      ctx.beginPath();
+      ctx.arc(px, py, sz * 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+
+    // ── Embers (fast bright sparks) ──
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (const p of embers) {
+      p.t += dt;
+      if (p.t > p.life) {
+        p.x = 0.1 + Math.random() * 0.8;
+        p.y = 0.95 + Math.random() * 0.05;
+        p.t = 0;
+        p.vy = -(3 + Math.random() * 6);
+        p.vx = (Math.random() - 0.5) * 3;
+        p.life = 0.3 + Math.random() * 0.8;
+        p.size = 1 + Math.random() * 2;
+        continue;
+      }
+      p.x += p.vx * dt + noise(p.y * 20 + t, 0) * 0.002;
+      p.y += p.vy * dt;
+      p.vy -= 0.3 * dt;
+      if (p.y > 1) continue;
+      const a = Math.min(1, p.t * 8) * (1 - Math.max(0, (p.t - p.life * 0.6) / (p.life * 0.4)));
+      const sz = p.size * (1 + p.t * 2);
+      ctx.fillStyle = `rgba(255,220,100,${a * 0.8})`;
+      ctx.beginPath();
+      ctx.arc(p.x * W, p.y * H, sz, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+
+    // ── Smoke ──
+    for (const p of smoke) {
+      p.t += dt;
+      if (p.t > p.life) {
+        p.x = 0.1 + Math.random() * 0.8;
+        p.y = 0.85 + Math.random() * 0.1;
+        p.t = 0;
+        p.vy = -(0.1 + Math.random() * 0.25);
+        p.life = 4 + Math.random() * 6;
+        p.size = 20 + Math.random() * 40;
+        continue;
+      }
+      const lifePct = p.t / p.life;
+      const alpha = Math.min(1, lifePct * 2) * (1 - Math.max(0, (lifePct - 0.6) / 0.4)) * 0.08;
+      const sz = p.size * (0.5 + lifePct * 1.5);
+      p.x += (noise(p.y * 5 + t * 0.2, 0) - 0.5) * 0.001;
+      p.y += p.vy * dt;
+      ctx.fillStyle = `rgba(50,40,35,${alpha})`;
+      ctx.beginPath();
+      ctx.arc(p.x * W, p.y * H, sz, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // ── Heat shimmer ──
+    sctx.clearRect(0, 0, W, H);
+    sctx.filter = 'blur(4px)';
+    for (let i = 0; i < 20; i++) {
+      const sx = noise(t * 0.3 + i * 50, 0) * W;
+      const sy = H * 0.3 + noise(t * 0.4 + i * 70, 0) * H * 0.5;
+      const sh = 20 + noise(t * 0.5 + i * 90, 0) * 40;
+      const sw = 30 + noise(t * 0.6 + i * 110, 0) * 60;
+      const sa = 0.02 + noise(t * 0.7 + i * 130, 0) * 0.02;
+      sctx.fillStyle = `rgba(255,200,100,${sa})`;
+      sctx.beginPath();
+      sctx.ellipse(sx, sy, sw, sh, 0, 0, Math.PI * 2);
+      sctx.fill();
+    }
+    sctx.filter = 'none';
+
+    requestAnimationFrame(draw);
+  }
+
+  requestAnimationFrame(draw);
+})();
+</script>
+</body>
+</html>

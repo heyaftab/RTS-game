@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Red Alert Mini</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div id="topbar">
+  <div class="logo">RED <span>ALERT</span> MINI</div>
+  <div class="faction-badge">☭ SOVIET</div>
+  <div id="msg-bar">Awaiting orders, Commander.</div>
+  <div class="resource-panel">
+    <div class="wave-bar" id="wave-bar">
+      <span class="wave-label">WAVE <span id="wave-num">1</span></span>
+      <div id="wave-progress"><div id="wave-fill"></div></div>
+    </div>
+    <button id="pause-btn" class="pause-btn" onclick="togglePause()">⏸</button>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div id="main">
+
+  <!-- CANVAS WRAP -->
+  <div id="canvas-wrap">
+    <canvas id="gameCanvas"></canvas>
+    <div id="sel-box"></div>
+    <div id="alert-overlay"></div>
+    <div id="pause-overlay">
+      <div class="pause-title">⏸ PAUSED</div>
+      <div class="pause-hint">Press <span class="hotkey">P</span> to resume</div>
+      <div id="sound-controls" class="sound-panel">
+        <div class="sound-title">🔊 AUDIO CONTROL</div>
+        <div class="sound-slider-group">
+          <label for="masterVolume">Master Volume</label>
+          <div class="slider-container">
+            <input type="range" id="masterVolume" class="sound-slider" min="0" max="100" value="50" title="Master Volume Control" oninput="updateMasterVolume(this.value)" aria-label="Master Volume">
+            <span class="volume-value" id="masterVolumeValue">50%</span>
+          </div>
+        </div>
+        <div class="sound-slider-group">
+          <label for="musicVolume">Music Volume</label>
+          <div class="slider-container">
+            <input type="range" id="musicVolume" class="sound-slider" min="0" max="100" value="50" title="Music Volume Control" oninput="updateMusicVolume(this.value)" aria-label="Music Volume">
+            <span class="volume-value" id="musicVolumeValue">50%</span>
+          </div>
+        </div>
+        <div class="sound-slider-group">
+          <label for="sfxVolume">SFX Volume</label>
+          <div class="slider-container">
+            <input type="range" id="sfxVolume" class="sound-slider" min="0" max="100" value="50" title="SFX Volume Control" oninput="updateSFXVolume(this.value)" aria-label="SFX Volume">
+            <span class="volume-value" id="sfxVolumeValue">50%</span>
+          </div>
+        </div>
+        <div class="sound-buttons">
+          <button class="sound-btn" id="muteBtn" onclick="toggleMute()">🔊 MUTE</button>
+          <button class="sound-btn" onclick="resetAudio()">⟲ RESET</button>
+        </div>
+      </div>
+      <button class="quit-btn" onclick="quitGame()">🚪 QUIT GAME</button>
+    </div>
+    <!-- DIFFICULTY MENU -->
+    <div id="difficulty-overlay">
+      <canvas id="menu-canvas"></canvas>
+      <div class="landing-warfield" aria-hidden="true"></div>
+      <div class="diff-menu-content">
+        <div class="diff-title">☭ RED ALERT MINI</div>
+        <div class="diff-sub">— BLOOD, STEEL &amp; FIRE —</div>
+        <div class="diff-warning">NO RETREAT / NO MERCY / HOLD THE LINE</div>
+        <div class="diff-options">
+          <button class="diff-btn" onclick="chooseDifficulty('easy', this)">
+            <span class="diff-icon">✚</span>
+            <span class="diff-label">Easy</span>
+            <span class="diff-desc">Bruised armor, heavy reserves</span>
+          </button>
+          <button class="diff-btn" onclick="chooseDifficulty('medium', this)">
+            <span class="diff-icon">▰</span>
+            <span class="diff-label">Medium</span>
+            <span class="diff-desc">Shellfire pressure, fewer breaks</span>
+          </button>
+          <button class="diff-btn" onclick="chooseDifficulty('hard', this)">
+            <span class="diff-icon">✹</span>
+            <span class="diff-label">Hard</span>
+            <span class="diff-desc">Crushing waves, scarce resources</span>
+          </button>
+        </div>
+        <div class="diff-hint">Pick the battlefield, Commander</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- POWER METER -->
+  <div id="power-meter" aria-hidden="true">
+    <div class="power-meter-track">
+      <div class="power-meter-fill power-meter-green" id="power-meter-green"></div>
+      <div class="power-meter-fill power-meter-yellow" id="power-meter-yellow"></div>
+      <div class="power-meter-fill power-meter-red" id="power-meter-red"></div>
+    </div>
+  </div>
+
+  <!-- SIDEBAR -->
+  <div id="sidebar">
+
+    <!-- MINIMAP -->
+    <div class="minimap-section command-radar">
+      <div class="sidebar-credits" id="sidebar-credits">2000</div>
+      <canvas id="minimap" width="184" height="120" onclick="minimapClick(event)"></canvas>
+      <div class="command-tabs" aria-label="Command categories">
+        <button class="command-tab active" data-command-tab="structures" type="button" onclick="showCommandTab('structures')" title="Structures">⌂</button>
+        <button class="command-tab" data-command-tab="security" type="button" onclick="showCommandTab('security')" title="Security">◆</button>
+        <button class="command-tab" data-command-tab="infantry" type="button" onclick="showCommandTab('infantry')" title="Infantry">▥</button>
+        <button class="command-tab" data-command-tab="barracks" type="button" onclick="showCommandTab('barracks')" title="Barracks">⚙</button>
+      </div>
+    </div>
+
+    <!-- BUILD STRUCTURES -->
+    <div class="sidebar-section command-panel structures-panel active" data-command-panel="structures">
+      <div class="sidebar-title">Structures</div>
+      <div class="build-grid">
+        <button class="build-btn" onclick="startPlace('powerplant')" id="btn-powerplant">
+          <div class="btn-img-wrap"><img class="btn-img" src="assets/Red_Power_Plant.png" alt="Power Plant"></div>
+          <div class="btn-footer"><span class="btn-label">Power Plant</span><span class="cost">$500</span></div>
+        </button>
+        <button class="build-btn" onclick="startPlace('barracks')" id="btn-barracks">
+          <div class="btn-img-wrap"><img class="btn-img" src="assets/Red_Infantry.png" alt="Infantry"></div>
+          <div class="btn-footer"><span class="btn-label">Infantry</span><span class="cost">$300</span></div>
+        </button>
+        <button class="build-btn" onclick="startPlace('warfactory')" id="btn-warfactory">
+          <div class="btn-img-wrap"><img class="btn-img" src="assets/Red_Barrack.png" alt="Barracks"></div>
+          <div class="btn-footer"><span class="btn-label">Barracks</span><span class="cost">$2000</span></div>
+        </button>
+        <button class="build-btn" onclick="startPlace('refinery')" id="btn-refinery">
+          <div class="btn-img-wrap"><img class="btn-img" src="assets/Red_Refinery.png" alt="Refinery"></div>
+          <div class="btn-footer"><span class="btn-label">Refinery</span><span class="cost">$2000</span></div>
+        </button>
+        <button class="build-btn" onclick="startPlace('radar')" id="btn-radar">
+          <div class="btn-img-wrap"><img class="btn-img" src="assets/Red_Radar.png" alt="Radar"></div>
+          <div class="btn-footer"><span class="btn-label">Radar</span><span class="cost">$1000</span></div>
+        </button>
+      </div>
+    </div>
+
+    <!-- SECURITY -->
+    <div class="sidebar-section command-panel security-panel" data-command-panel="security">
+      <div class="sidebar-title">Security</div>
+      <div class="build-grid">
+        <button class="build-btn" onclick="startPlace('tesla')" id="btn-tesla">
+          <div class="btn-img-wrap"><img class="btn-img" src="assets/Red_Tesla_Coil.png" alt="Tesla Coil"></div>
+          <div class="btn-footer"><span class="btn-label">Tesla</span><span class="cost">$1500</span></div>
+        </button>
+        <button class="build-btn" onclick="startPlace('turret')" id="btn-turret">
+          <div class="btn-img-wrap"><img class="btn-img" src="assets/Red_Turret.png" alt="Turret"></div>
+          <div class="btn-footer"><span class="btn-label">Turret</span><span class="cost">$600</span></div>
+        </button>
+        <button class="build-btn" onclick="startPlace('wall')" id="btn-wall">
+          <span class="icon">▰</span>Wall
+          <span class="cost">$100</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- TRAIN UNITS -->
+    <div class="sidebar-section command-panel units-panel" data-command-panel="infantry">
+      <div class="sidebar-title">Infantry</div>
+      <div class="build-grid">
+        <button class="build-btn" onclick="trainUnit('conscript')" id="btn-conscript">
+          <div class="btn-img-wrap"><img class="btn-img" src="assets/Red_Infantry.png" alt="Conscript Soldier"></div>
+          <div class="btn-footer"><span class="btn-label">Soldier</span><span class="cost">$100</span></div>
+          <span class="queue-count" data-unit="conscript"></span>
+        </button>
+        <button class="build-btn" onclick="trainUnit('dog')" id="btn-dog">
+          <span class="icon">🐕</span>War Dog
+          <span class="cost">$200</span>
+          <span class="queue-count" data-unit="dog"></span>
+        </button>
+        <button class="build-btn" onclick="trainUnit('tesla_trooper')" id="btn-tesla_trooper">
+          <div class="btn-img-wrap"><img class="btn-img" src="assets/Red_Tesla_Coil.png" alt="Tesla Trooper"></div>
+          <div class="btn-footer"><span class="btn-label">Tesla Tr.</span><span class="cost">$500</span></div>
+          <span class="queue-count" data-unit="tesla_trooper"></span>
+        </button>
+      </div>
+    </div>
+
+    <!-- BARRACKS -->
+    <div class="sidebar-section command-panel barracks-panel" data-command-panel="barracks">
+      <div class="sidebar-title">Barracks</div>
+      <div class="build-grid">
+        <button class="build-btn" onclick="trainUnit('v3')" id="btn-v3">
+          <span class="icon">🚀</span>V3 Rocket
+          <span class="cost">$1200</span>
+          <span class="queue-count" data-unit="v3"></span>
+        </button>
+        <button class="build-btn" onclick="trainUnit('apocalypse')" id="btn-apocalypse">
+          <span class="icon">💀</span>Apocalypse
+          <span class="cost">$2000</span>
+          <span class="queue-count" data-unit="apocalypse"></span>
+        </button>
+        <button class="build-btn" onclick="trainUnit('rhino')" id="btn-rhino">
+          <span class="icon">🚂</span>Rhino
+          <span class="cost">$900</span>
+          <span class="queue-count" data-unit="rhino"></span>
+        </button>
+      </div>
+    </div>
+
+    <!-- SELECTED INFO -->
+    <div id="sel-info">
+      <div class="sel-info-empty">
+        [ Select a unit or building ]
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<!-- BOTTOM BAR -->
+<div id="bottombar">
+  <span class="help-item"><span class="hotkey">[Click]</span>Select/Move</span>
+  <span class="help-item"><span class="hotkey">[Drag]</span>Box Select</span>
+  <span class="help-item"><span class="hotkey">[RClick]</span>Attack/Move</span>
+  <span class="help-item"><span class="hotkey">[A]</span>Attack Move</span>
+  <span class="help-item"><span class="hotkey">[S]</span>Stop</span>
+  <span class="help-item"><span class="hotkey">[Del]</span>Sell/Delete</span>
+  <span class="help-item"><span class="hotkey">[Scroll]</span>Zoom</span>
+  <span class="help-item help-item-right">Defend your base! ☭</span>
+</div>
+
+<script src="js/main.js"></script>
+</body>
+</html>
